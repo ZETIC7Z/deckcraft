@@ -1,0 +1,101 @@
+name: Build & Release Zetica Deck
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.12.0)'
+        required: true
+        default: 'v0.12.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows x64 (MSI & Portable)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install WiX Toolset v5
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+
+      - name: Build & Package Windows Artifacts
+        shell: pwsh
+        run: |
+          $env:DECKCRAFT_VERSION = "${{ github.event.inputs.tag_name || github.ref_name }}".TrimStart('v')
+          pwsh packaging/windows/package.ps1 -Arch x64
+
+      - name: Prepare Release Assets
+        shell: pwsh
+        run: |
+          $ver = "${{ github.event.inputs.tag_name || github.ref_name }}".TrimStart('v')
+          $dist = "dist/release"
+          mkdir -Force release_assets
+
+          # Copy deckcraft naming
+          Copy-Item "$dist/deckcraft-$ver-windows-x64.msi" release_assets/
+          Copy-Item "$dist/deckcraft-$ver-windows-x64-portable.zip" release_assets/
+
+          # Copy zetica-deck naming
+          Copy-Item "$dist/deckcraft-$ver-windows-x64.msi" "release_assets/zetica-deck-$ver-windows-x64.msi"
+          Copy-Item "$dist/deckcraft-$ver-windows-x64-portable.zip" "release_assets/zetica-deck-$ver-windows-x64-portable.zip"
+
+          # Generate SHA256SUMS.txt
+          Get-ChildItem release_assets/* -File | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$h  $($_.Name)"
+          } | Set-Content release_assets/SHA256SUMS.txt -Encoding ascii
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zetica-deck-windows-x64
+          path: release_assets/*
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zetica-deck-windows-x64
+          path: release_assets
+
+      - name: Publish Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: Zetica Deck ${{ github.event.inputs.tag_name || github.ref_name }}
+          body: |
+            ## Zetica Deck Release ${{ github.event.inputs.tag_name || github.ref_name }}
+
+            Official presentations and slide shows application for the **Zetica Creative Suite**. Rebuilt from scratch in pure Rust.
+
+            ### Included Packages:
+            - `zetica-deck-${{ github.event.inputs.tag_name || github.ref_name }}-windows-x64.msi`: Native Windows Installer
+            - `zetica-deck-${{ github.event.inputs.tag_name || github.ref_name }}-windows-x64-portable.zip`: Portable standalone zip
+            - `deckcraft-${{ github.event.inputs.tag_name || github.ref_name }}-windows-x64.msi`: Upstream compatible package
+
+            Developed by **Sam Pangilinan** ([zeticuz.xyz](https://www.zeticuz.xyz/)).
+          files: release_assets/*
+          draft: false
+          prerelease: false

@@ -27,6 +27,9 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install WiX Toolset v5
         shell: pwsh
         run: |
@@ -36,23 +39,24 @@ jobs:
       - name: Build & Package Windows Artifacts
         shell: pwsh
         run: |
-          $env:DECKCRAFT_VERSION = "${{ github.event.inputs.tag_name || github.ref_name }}".TrimStart('v')
+          $ver = if ("${{ github.event.inputs.tag_name }}") { "${{ github.event.inputs.tag_name }}".TrimStart('v') } else { "0.12.0" }
+          $env:DECKCRAFT_VERSION = $ver
           pwsh packaging/windows/package.ps1 -Arch x64
 
       - name: Prepare Release Assets
         shell: pwsh
         run: |
-          $ver = "${{ github.event.inputs.tag_name || github.ref_name }}".TrimStart('v')
+          $ver = if ("${{ github.event.inputs.tag_name }}") { "${{ github.event.inputs.tag_name }}".TrimStart('v') } else { "0.12.0" }
           $dist = "dist/release"
           mkdir -Force release_assets
 
-          # Copy deckcraft naming
-          Copy-Item "$dist/deckcraft-$ver-windows-x64.msi" release_assets/
-          Copy-Item "$dist/deckcraft-$ver-windows-x64-portable.zip" release_assets/
+          # Copy files from dist/release
+          Copy-Item $dist/*-windows-x64.msi release_assets/ -Force
+          Copy-Item $dist/*-windows-x64-portable.zip release_assets/ -Force
 
-          # Copy zetica-deck naming
-          Copy-Item "$dist/deckcraft-$ver-windows-x64.msi" "release_assets/zetica-deck-$ver-windows-x64.msi"
-          Copy-Item "$dist/deckcraft-$ver-windows-x64-portable.zip" "release_assets/zetica-deck-$ver-windows-x64-portable.zip"
+          # Copy canonical zetica-deck naming
+          Copy-Item $dist/*-windows-x64.msi "release_assets/zetica-deck-$ver-windows-x64.msi" -Force
+          Copy-Item $dist/*-windows-x64-portable.zip "release_assets/zetica-deck-$ver-windows-x64-portable.zip" -Force
 
           # Generate SHA256SUMS.txt
           Get-ChildItem release_assets/* -File | ForEach-Object {

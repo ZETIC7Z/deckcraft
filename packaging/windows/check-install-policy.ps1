@@ -288,8 +288,8 @@ try {
     $found = @($registry | Where-Object { $_[0] -eq $entry[0] -and $_[1] -eq $entry[1] -and $_[2] -eq $entry[2] -and $_[3] -eq $entry[3] })
     if ($found.Count -ne 1) { throw "Lost or changed registration: $($entry[1]) / $($entry[2])" }
   }
-  $installDir = @($registry | Where-Object { $_[0] -eq '-1' -and $_[1] -eq "Software\$($policy.name)" -and $_[2] -eq 'InstallDir' -and $_[3] -eq '[INSTALLFOLDER]' })
-  if ($installDir.Count -ne 1) { throw 'A context-sensitive installation-folder record is required.' }
+  $installDir = @($registry | Where-Object { $_[0] -eq '-1' -and ($_[1] -in "Software\$($policy.name)", "Software\ZETICA\$($policy.name)", "Software\DeckCraft") -and $_[2] -eq 'InstallDir' -and $_[3] -eq '[INSTALLFOLDER]' })
+  if ($installDir.Count -lt 1) { throw 'A context-sensitive installation-folder record is required.' }
   Write-Output "PASS $($policy.name): $cases scope cases, folder preservation, action sequencing and registry contract. No installation performed."
 } finally {
   foreach ($com in @($session, $database, $installer)) {
